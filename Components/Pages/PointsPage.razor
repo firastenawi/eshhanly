@@ -1,0 +1,83 @@
+@page "/points"
+@attribute [Authorize(Policy = ActiveSubscriptionHandler.Policy)]
+@inject PointService Points
+@inject UserSession Session
+
+<PageTitle>نقاط الشحن - اشحنلي</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">نقاط الشحن</MudText>
+
+<MudPaper Class="pa-4 mb-4" Outlined="true">
+    <MudGrid Spacing="2">
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="string" @bind-Value="_gov" @bind-Value:after="SearchAsync" Label="المحافظة" Clearable="true" Dense="true">
+                @foreach (var g in Syria.Governorates)
+                {
+                    <MudSelectItem Value="g">@g</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudSelect T="string" @bind-Value="_connector" @bind-Value:after="SearchAsync" Label="نوع الشاحن" Clearable="true" Dense="true">
+                @foreach (var c in Syria.ConnectorTypes)
+                {
+                    <MudSelectItem Value="c">@c</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="4">
+            <MudTextField T="string" @bind-Value="_search" @bind-Value:after="SearchAsync" Label="بحث بالاسم أو المنطقة" Margin="Margin.Dense"
+                          DebounceInterval="400" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" />
+        </MudItem>
+        <MudItem xs="12" sm="6" md="2" Class="d-flex align-center">
+            <MudSwitch T="bool" @bind-Value="_availableOnly" @bind-Value:after="SearchAsync" Label="الفعّالة فقط" Color="Color.Primary" />
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">ما في نقاط شحن مطابقة للبحث حالياً.</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@_items.Count نقطة</MudText>
+    <MudGrid>
+        @foreach (var p in _items)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <PointCard Point="p">
+                    <MudButton Href="@($"/points/{p.Id}")" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true">
+                        @(p.OwnerId == _userId ? "عرض (نقطتي)" : "التفاصيل وطلب الشحن")
+                    </MudButton>
+                </PointCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private string? _gov, _connector, _search;
+    private bool _availableOnly, _loading = true;
+    private int? _userId;
+    private List<ChargePoint> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await Session.GetUserAsync();
+        _userId = user?.Id;
+        _gov = user?.Governorate;
+        await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        _loading = true;
+        _items = await Points.SearchAsync(new PointFilter(_gov, _connector, _availableOnly, _search));
+        _loading = false;
+    }
+}

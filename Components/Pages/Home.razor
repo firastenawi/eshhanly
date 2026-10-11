@@ -1,0 +1,159 @@
+@page "/"
+@inject UserSession Session
+@inject SubscriptionService Subscriptions
+@inject RequestService Requests
+@inject PointService Points
+
+<PageTitle>اشحنلي - شحن السيارات الكهربائية في سوريا</PageTitle>
+
+@if (_loading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (_user is null)
+{
+    <div class="hero pa-8 pa-md-12 mb-8">
+        <MudText Typo="Typo.h3" Class="mb-3" Style="font-weight:700">اشحنلي ⚡</MudText>
+        <MudText Typo="Typo.h6" Class="mb-6" Style="font-weight:400">
+            منصة بتربط أصحاب السيارات الكهربائية مع أصحاب نقاط الشحن بكل سوريا — أفراد أو محطات.
+        </MudText>
+        <MudButton Href="/register" Variant="Variant.Filled" Size="Size.Large" Class="me-2" Style="background:#fff;color:#057a55">اشترك الآن</MudButton>
+        <MudButton Href="/login" Variant="Variant.Outlined" Style="color:#fff;border-color:#fff" Size="Size.Large">تسجيل الدخول</MudButton>
+    </div>
+
+    <MudGrid>
+        @foreach (var (icon, title, text) in Steps)
+        {
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-5" Elevation="0" Outlined="true" Style="height:100%">
+                    <MudIcon Icon="@icon" Color="Color.Primary" Size="Size.Large" />
+                    <MudText Typo="Typo.h6" Class="my-2">@title</MudText>
+                    <MudText Typo="Typo.body2">@text</MudText>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+
+    <MudPaper Class="pa-6 mt-8 text-center" Elevation="0" Outlined="true">
+        <MudText Typo="Typo.h6">الاشتراك الشهري: @Syria.Money(_settings.MonthlyFee)</MudText>
+        <MudText Typo="Typo.body2" Class="mt-2">@_settings.PaymentInstructions</MudText>
+        @if (!string.IsNullOrEmpty(_settings.ContactPhone))
+        {
+            <MudText Typo="Typo.body2" Class="mt-1">للتواصل: <span dir="ltr">@_settings.ContactPhone</span></MudText>
+        }
+    </MudPaper>
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="mb-1">أهلاً @_user.FullName 👋</MudText>
+    <MudText Typo="Typo.body1" Class="mb-6" Color="Color.Secondary">
+        حالة الاشتراك: <b>@Syria.SubscriptionState(_user, DateTime.UtcNow).Text</b>
+        @if (_user.ActiveUntil > DateTime.UtcNow && _user.Role != UserRole.Admin)
+        {
+            <span> — حتى @Syria.FormatDate(_user.ActiveUntil.Value)</span>
+        }
+    </MudText>
+
+    @if (_user.Role == UserRole.Admin)
+    {
+        <MudButton Href="/admin" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Dashboard">لوحة الإدارة</MudButton>
+    }
+    else if (!_user.IsActive(DateTime.UtcNow))
+    {
+        <MudAlert Severity="Severity.Info">
+            حسابك غير مفعّل حالياً. ادفع الاشتراك نقداً وسيتم تفعيله من الإدارة.
+            <MudLink Href="/subscription">تفاصيل الاشتراك</MudLink>
+        </MudAlert>
+    }
+    else
+    {
+        <MudGrid Class="mb-6">
+            @if (_user.Role == UserRole.Driver)
+            {
+                <MudItem xs="12" sm="6">
+                    <MudButton Href="/points" FullWidth="true" Size="Size.Large" Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Search">ابحث عن نقطة شحن</MudButton>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudButton Href="/requests" FullWidth="true" Size="Size.Large" Variant="Variant.Outlined" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.SwapHoriz">طلباتي</MudButton>
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12" sm="6">
+                    <MudButton Href="/my-points" FullWidth="true" Size="Size.Large" Variant="Variant.Filled" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.EvStation">نقاطي (@_myPoints.Count)</MudButton>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudButton Href="/requests" FullWidth="true" Size="Size.Large" Variant="Variant.Outlined" Color="Color.Primary"
+                               StartIcon="@Icons.Material.Filled.Inbox">الطلبات الواردة (@_recent.Count(r => r.Request.Status == RequestStatus.Pending) بانتظار الرد)</MudButton>
+                </MudItem>
+            }
+        </MudGrid>
+
+        @if (_user.Role == UserRole.Host && _myPoints.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-4">
+                ما ضفت أي نقطة شحن لسا. <MudLink Href="/my-points/new">أضف نقطتك الأولى</MudLink> لتظهر لأصحاب السيارات.
+            </MudAlert>
+        }
+
+        <MudText Typo="Typo.h6" Class="mb-2">آخر الطلبات</MudText>
+        @if (_recent.Count == 0)
+        {
+            <MudText Color="Color.Secondary">لا يوجد طلبات بعد.</MudText>
+        }
+        else
+        {
+            <MudList T="string" Dense="true">
+                @foreach (var row in _recent.Take(5))
+                {
+                    var r = row.Request;
+                    <MudListItem T="string" Href="@($"/requests/{r.Id}")">
+                        <div class="d-flex align-center gap-2 flex-wrap">
+                            <RequestStatusChip Status="r.Status" />
+                            <MudText>@r.ChargePoint.Name — @(_user.Id == r.DriverId ? r.Host.FullName : r.Driver.FullName)</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@Syria.Format(r.CreatedAt)</MudText>
+                            @if (row.Unread > 0)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Error">@row.Unread رسالة جديدة</MudChip>
+                            }
+                        </div>
+                    </MudListItem>
+                }
+            </MudList>
+        }
+    }
+}
+
+@code {
+    private static readonly (string Icon, string Title, string Text)[] Steps =
+    [
+        (Icons.Material.Filled.HowToReg, "1. اشترك", "سجّل كصاحب سيارة أو صاحب نقطة شحن وادفع الاشتراك الشهري نقداً."),
+        (Icons.Material.Filled.Search, "2. ابحث", "تصفّح نقاط الشحن حسب المحافظة ونوع الشاحن وحالة النقطة."),
+        (Icons.Material.Filled.Send, "3. اطلب", "أرسل طلب شحن، وصاحب النقطة بيقبل أو بيرفض مع رسالة."),
+        (Icons.Material.Filled.Chat, "4. تواصلوا", "اتفقوا على الوقت والسعر عبر المحادثة، والدفع نقداً بينكم."),
+    ];
+
+    private bool _loading = true;
+    private User? _user;
+    private AppSettings _settings = new();
+    private List<RequestRow> _recent = [];
+    private List<ChargePoint> _myPoints = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await Session.GetUserAsync();
+        if (_user is null)
+        {
+            _settings = await Subscriptions.GetSettingsAsync();
+        }
+        else if (_user.Role != UserRole.Admin)
+        {
+            _recent = await Requests.ListAsync(_user.Id, null);
+            if (_user.Role == UserRole.Host) _myPoints = await Points.MineAsync(_user.Id);
+        }
+        _loading = false;
+    }
+}

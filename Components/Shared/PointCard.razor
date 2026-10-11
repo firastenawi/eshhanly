@@ -1,0 +1,44 @@
+<MudCard Class="point-card" Outlined="true">
+    <MudCardHeader>
+        <CardHeaderAvatar>
+            <MudAvatar Color="Color.Primary" Variant="Variant.Outlined">
+                <MudIcon Icon="@(Point.Owner?.HostKind == HostKind.Station ? Icons.Material.Filled.EvStation : Icons.Material.Filled.Home)" />
+            </MudAvatar>
+        </CardHeaderAvatar>
+        <CardHeaderContent>
+            <MudText Typo="Typo.h6">@Point.Name</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">@Point.Governorate - @Point.City</MudText>
+        </CardHeaderContent>
+        <CardHeaderActions>
+            <PointStatusChip Status="Point.Status" />
+        </CardHeaderActions>
+    </MudCardHeader>
+    <MudCardContent Class="pt-0">
+        <MudText Typo="Typo.body2" Class="mb-1"><MudIcon Icon="@Icons.Material.Filled.Place" Size="Size.Small" /> @Point.Address</MudText>
+        @if (!string.IsNullOrEmpty(Point.Connectors))
+        {
+            <div class="d-flex flex-wrap gap-1 my-1">
+                @foreach (var c in Point.Connectors.Split(',', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Text">@c</MudChip>
+                }
+            </div>
+        }
+        @if (Point.PowerKw is not null)
+        {
+            <MudText Typo="Typo.body2"><MudIcon Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" /> <span dir="ltr">@Point.PowerKw?.ToString("0.#") kW</span></MudText>
+        }
+        @if (!string.IsNullOrEmpty(Point.PriceNote))
+        {
+            <MudText Typo="Typo.body2"><MudIcon Icon="@Icons.Material.Filled.Payments" Size="Size.Small" /> @Point.PriceNote</MudText>
+        }
+    </MudCardContent>
+    <MudCardActions>
+        @ChildContent
+    </MudCardActions>
+</MudCard>
+
+@code {
+    [Parameter, EditorRequired] public ChargePoint Point { get; set; } = null!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

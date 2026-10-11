@@ -1,0 +1,16 @@
+# Render blueprint: New + > Blueprint > pick this repo.
+services:
+  - type: web
+    name: eshhanly
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL        # paste the Neon connection string (postgres://...)
+        sync: false
+      - key: Admin__Phone        # admin login phone, e.g. 09xxxxxxxx
+        sync: false
+      - key: Admin__Password     # admin password (only used to create the first admin)
+        sync: false
+      - key: Admin__Name
+        value: مدير اشحنلي

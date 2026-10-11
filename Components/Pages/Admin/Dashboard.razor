@@ -1,0 +1,48 @@
+@page "/admin"
+@attribute [Authorize(Roles = nameof(UserRole.Admin))]
+@inject SubscriptionService Subscriptions
+
+<PageTitle>لوحة الإدارة - اشحنلي</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">لوحة الإدارة</MudText>
+
+@if (_stats is not null)
+{
+    <MudGrid Class="mb-6">
+        @foreach (var (label, value, icon, color) in Tiles())
+        {
+            <MudItem xs="6" sm="4" md="3">
+                <MudPaper Class="pa-4 d-flex align-center gap-3" Outlined="true">
+                    <MudIcon Icon="@icon" Color="color" Size="Size.Large" />
+                    <div>
+                        <MudText Typo="Typo.h5">@value</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@label</MudText>
+                    </div>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+<MudText Typo="Typo.h6" Class="mb-2">طلبات الاشتراك بانتظار التفعيل</MudText>
+<UsersTable PendingOnly="true" Changed="LoadStatsAsync" />
+
+@code {
+    private AdminStats? _stats;
+
+    protected override async Task OnInitializedAsync() => await LoadStatsAsync();
+
+    private async Task LoadStatsAsync() => _stats = await Subscriptions.StatsAsync();
+
+    private IEnumerable<(string, string, string, Color)> Tiles() =>
+    [
+        ("بانتظار التفعيل", _stats!.PendingRequests.ToString(), Icons.Material.Filled.HourglassTop, Color.Warning),
+        ("حسابات فعّالة", _stats.ActiveUsers.ToString(), Icons.Material.Filled.VerifiedUser, Color.Success),
+        ("أصحاب سيارات", _stats.Drivers.ToString(), Icons.Material.Filled.DirectionsCar, Color.Primary),
+        ("أصحاب نقاط", _stats.Hosts.ToString(), Icons.Material.Filled.Person, Color.Primary),
+        ("نقاط شحن", $"{_stats.ActivePoints} / {_stats.Points}", Icons.Material.Filled.EvStation, Color.Info),
+        ("طلبات شحن", _stats.ChargeRequests.ToString(), Icons.Material.Filled.SwapHoriz, Color.Info),
+        ("طلبات مقبولة", _stats.AcceptedRequests.ToString(), Icons.Material.Filled.CheckCircle, Color.Success),
+        ("إيرادات هذا الشهر", Syria.Money(_stats.RevenueThisMonth), Icons.Material.Filled.Payments, Color.Secondary),
+    ];
+}

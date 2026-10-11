@@ -1,0 +1,144 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject UserSession Session
+@inject NotificationService Notifications
+@inject LiveUpdates Live
+@inject NavigationManager Nav
+
+<MudRTLProvider RightToLeft="true">
+    <MudThemeProvider Theme="EshhanlyTheme.Default" />
+    <MudPopoverProvider />
+    <MudDialogProvider CloseButton="true" MaxWidth="MaxWidth.Small" FullWidth="true" />
+    <MudSnackbarProvider />
+
+    <MudLayout>
+        <MudAppBar Elevation="1" Color="Color.Primary">
+            @if (_user is not null)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="() => _drawer = !_drawer" />
+            }
+            <MudLink Href="/" Color="Color.Inherit" Underline="Underline.None" Class="d-flex align-center gap-1">
+                <MudIcon Icon="@Icons.Material.Filled.EvStation" />
+                <MudText Typo="Typo.h6">اشحنلي</MudText>
+            </MudLink>
+            <MudSpacer />
+            @if (_user is null)
+            {
+                <MudButton Href="/login" Color="Color.Inherit" Variant="Variant.Text">دخول</MudButton>
+                <MudButton Href="/register" Color="Color.Inherit" Variant="Variant.Outlined" Class="ms-2">اشتراك جديد</MudButton>
+            }
+            else
+            {
+                <MudBadge Content="_unreadMessages" Visible="_unreadMessages > 0" Color="Color.Error" Overlap="true" Class="me-1">
+                    <MudIconButton Icon="@Icons.Material.Filled.Chat" Color="Color.Inherit" Href="/requests" title="الطلبات والمحادثات" />
+                </MudBadge>
+                <MudBadge Content="_unreadNotifications" Visible="_unreadNotifications > 0" Color="Color.Error" Overlap="true">
+                    <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" Href="/notifications" title="الإشعارات" />
+                </MudBadge>
+            }
+        </MudAppBar>
+
+        @if (_user is not null)
+        {
+            <MudDrawer @bind-Open="_drawer" Elevation="1" ClipMode="DrawerClipMode.Always" Variant="DrawerVariant.Responsive">
+                <div class="pa-4">
+                    <MudText Typo="Typo.subtitle1"><b>@_user.FullName</b></MudText>
+                    <MudText Typo="Typo.caption">@_user.Role.Label() @(_user.HostKind is { } k ? $"({k.Label()})" : "")</MudText>
+                    <div class="mt-1">
+                        <MudChip T="string" Size="Size.Small" Color="_state.Color" Variant="Variant.Outlined">@_state.Text</MudChip>
+                    </div>
+                </div>
+                <MudDivider />
+                <MudNavMenu Color="Color.Primary">
+                    <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">الرئيسية</MudNavLink>
+                    @if (_user.Role == UserRole.Admin)
+                    {
+                        <MudNavLink Href="/admin" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">لوحة الإدارة</MudNavLink>
+                        <MudNavLink Href="/admin/users" Icon="@Icons.Material.Filled.People">المشتركون</MudNavLink>
+                        <MudNavLink Href="/admin/points" Icon="@Icons.Material.Filled.EvStation">كل نقاط الشحن</MudNavLink>
+                        <MudNavLink Href="/admin/settings" Icon="@Icons.Material.Filled.Settings">الإعدادات</MudNavLink>
+                    }
+                    else
+                    {
+                        <MudNavLink Href="/points" Icon="@Icons.Material.Filled.Search">نقاط الشحن</MudNavLink>
+                        @if (_user.Role == UserRole.Host)
+                        {
+                            <MudNavLink Href="/my-points" Icon="@Icons.Material.Filled.EvStation">نقاطي</MudNavLink>
+                        }
+                        <MudNavLink Href="/requests" Icon="@Icons.Material.Filled.SwapHoriz">
+                            @(_user.Role == UserRole.Host ? "الطلبات الواردة" : "طلباتي")
+                        </MudNavLink>
+                        <MudNavLink Href="/subscription" Icon="@Icons.Material.Filled.CardMembership">اشتراكي</MudNavLink>
+                    }
+                    <MudNavLink Href="/notifications" Icon="@Icons.Material.Filled.Notifications">الإشعارات</MudNavLink>
+                    <MudNavLink Href="/profile" Icon="@Icons.Material.Filled.Person">حسابي</MudNavLink>
+                </MudNavMenu>
+                <MudDivider Class="my-2" />
+                <form method="post" action="/account/logout" class="px-4 pb-4">
+                    <AntiforgeryToken />
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Text" Color="Color.Error"
+                               StartIcon="@Icons.Material.Filled.Logout" FullWidth="true">تسجيل الخروج</MudButton>
+                </form>
+            </MudDrawer>
+        }
+
+        <MudMainContent>
+            <MudContainer MaxWidth="MaxWidth.Large" Class="py-6">
+                @if (_user is not null && _user.Role != UserRole.Admin && _daysLeft is >= 0 and <= 3)
+                {
+                    <MudAlert Severity="Severity.Warning" Class="mb-4" Dense="true">
+                        اشتراكك ينتهي خلال @(_daysLeft == 0 ? "أقل من يوم" : $"{_daysLeft} أيام").
+                        <MudLink Href="/subscription">جدّد الآن</MudLink>
+                    </MudAlert>
+                }
+                @Body
+            </MudContainer>
+        </MudMainContent>
+    </MudLayout>
+</MudRTLProvider>
+
+<div id="blazor-error-ui" data-nosnippet>
+    حدث خطأ غير متوقع.
+    <a href="." class="reload">إعادة التحميل</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private User? _user;
+    private bool _drawer = true;
+    private int _unreadNotifications, _unreadMessages;
+    private int? _daysLeft;
+    private (string Text, Color Color) _state;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        Live.UserChanged += OnUserChanged;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private async Task LoadAsync()
+    {
+        _user = await Session.GetUserAsync();
+        if (_user is null) return;
+        var now = DateTime.UtcNow;
+        _state = Syria.SubscriptionState(_user, now);
+        _daysLeft = _user.ActiveUntil > now ? (int)(_user.ActiveUntil.Value - now).TotalDays : null;
+        (_unreadNotifications, _unreadMessages) = await Notifications.UnreadCountsAsync(_user.Id);
+    }
+
+    private async Task OnUserChanged(int userId)
+    {
+        if (_user?.Id != userId) return;
+        await InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) =>
+        _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+
+    public void Dispose()
+    {
+        Live.UserChanged -= OnUserChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}

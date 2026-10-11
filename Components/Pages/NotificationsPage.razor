@@ -1,0 +1,67 @@
+@page "/notifications"
+@attribute [Authorize]
+@implements IDisposable
+@inject UserSession Session
+@inject NotificationService Notifications
+@inject LiveUpdates Live
+
+<PageTitle>الإشعارات - اشحنلي</PageTitle>
+
+<div class="d-flex align-center mb-4">
+    <MudText Typo="Typo.h4">الإشعارات</MudText>
+    <MudSpacer />
+    @if (_items.Any(n => !n.IsRead))
+    {
+        <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="MarkAllAsync">تعليم الكل كمقروء</MudButton>
+    }
+</div>
+
+@if (_items.Count == 0)
+{
+    <MudText Color="Color.Secondary">لا يوجد إشعارات.</MudText>
+}
+else
+{
+    <MudPaper Outlined="true">
+        <MudList T="string">
+            @foreach (var n in _items)
+            {
+                <MudListItem T="string" Href="@n.Link" Style="@(n.IsRead ? "" : "background: var(--mud-palette-action-default-hover)")">
+                    <MudText Typo="Typo.subtitle1"><b>@n.Title</b></MudText>
+                    @if (!string.IsNullOrEmpty(n.Body))
+                    {
+                        <MudText Typo="Typo.body2">@n.Body</MudText>
+                    }
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@Syria.Format(n.CreatedAt)</MudText>
+                </MudListItem>
+                <MudDivider />
+            }
+        </MudList>
+    </MudPaper>
+}
+
+@code {
+    private int _userId;
+    private List<Notification> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = await Session.GetUserIdAsync() ?? 0;
+        _items = await Notifications.ListAsync(_userId);
+        Live.UserChanged += OnChanged;
+    }
+
+    private async Task MarkAllAsync()
+    {
+        await Notifications.MarkAllReadAsync(_userId);
+        _items = await Notifications.ListAsync(_userId);
+    }
+
+    private async Task OnChanged(int id)
+    {
+        if (id != _userId) return;
+        await InvokeAsync(async () => { _items = await Notifications.ListAsync(_userId); StateHasChanged(); });
+    }
+
+    public void Dispose() => Live.UserChanged -= OnChanged;
+}

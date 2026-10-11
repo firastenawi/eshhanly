@@ -1,0 +1,73 @@
+@page "/my-points"
+@attribute [Authorize(Policy = ActiveSubscriptionHandler.Policy, Roles = nameof(UserRole.Host))]
+@inject PointService Points
+@inject UserSession Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>نقاطي - اشحنلي</PageTitle>
+
+<div class="d-flex align-center mb-4">
+    <MudText Typo="Typo.h4">نقاط الشحن الخاصة بي</MudText>
+    <MudSpacer />
+    <MudButton Href="/my-points/new" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add">إضافة نقطة</MudButton>
+</div>
+
+@if (_items.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">ما عندك نقاط شحن بعد. أضف نقطتك لتظهر لأصحاب السيارات.</MudAlert>
+}
+else
+{
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">غيّر حالة النقطة مباشرة من القائمة لتبقى المعلومات دقيقة لأصحاب السيارات.</MudText>
+    <MudGrid>
+        @foreach (var p in _items)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <PointCard Point="p">
+                    <div class="d-flex flex-column gap-2" style="width:100%">
+                        <MudButtonGroup Size="Size.Small" Variant="Variant.Outlined" OverrideStyles="false" Style="flex-wrap:wrap">
+                            @foreach (var s in Enum.GetValues<PointStatus>())
+                            {
+                                <MudButton Color="s.Color()" Variant="@(p.Status == s ? Variant.Filled : Variant.Outlined)"
+                                           OnClick="() => SetStatusAsync(p, s)">@s.Label()</MudButton>
+                            }
+                        </MudButtonGroup>
+                        <div class="d-flex gap-2">
+                            <MudButton Href="@($"/my-points/{p.Id}")" Size="Size.Small" StartIcon="@Icons.Material.Filled.Edit">تعديل</MudButton>
+                            <MudButton Size="Size.Small" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="() => DeleteAsync(p)">حذف</MudButton>
+                        </div>
+                    </div>
+                </PointCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private int _userId;
+    private List<ChargePoint> _items = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = await Session.GetUserIdAsync() ?? 0;
+        _items = await Points.MineAsync(_userId);
+    }
+
+    private async Task SetStatusAsync(ChargePoint p, PointStatus s)
+    {
+        await Points.SetStatusAsync(p.Id, _userId, s);
+        p.Status = s;
+        p.UpdatedAt = DateTime.UtcNow;
+        Snackbar.Add($"«{p.Name}»: {s.Label()}", Severity.Success);
+    }
+
+    private async Task DeleteAsync(ChargePoint p)
+    {
+        var ok = await Dialogs.ShowMessageBoxAsync("حذف نقطة الشحن", $"متأكد من حذف «{p.Name}»؟ سيتم حذف طلباتها ومحادثاتها أيضاً.",
+            yesText: "حذف", cancelText: "إلغاء");
+        if (ok != true) return;
+        await Points.DeleteAsync(p.Id, _userId);
+        _items.Remove(p);
+    }
+}

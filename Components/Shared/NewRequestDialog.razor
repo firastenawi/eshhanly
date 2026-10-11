@@ -1,0 +1,27 @@
+<MudDialog>
+    <TitleContent>طلب شحن من «@PointName»</TitleContent>
+    <DialogContent>
+        <MudTextField T="string" @bind-Value="_car" Label="السيارة" Placeholder="مثال: BYD Atto 3 - أبيض" MaxLength="100" />
+        <MudTextField T="string" @bind-Value="_message" Lines="3" Label="رسالة لصاحب النقطة" Class="mt-3"
+                      Placeholder="مثال: بدي اشحن اليوم بعد الساعة 6 المسا تقريباً ساعتين" MaxLength="500" Counter="500" />
+        <MudText Typo="Typo.caption" Class="mt-2">الاتفاق على الوقت والمدة والسعر يتم بينكم مباشرة، والدفع نقداً.</MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => Dialog.Cancel()">إلغاء</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Submit">إرسال الطلب</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public record Result(string? Car, string? Message);
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+    [Parameter] public string PointName { get; set; } = "";
+    [Parameter] public string? DefaultCar { get; set; }
+
+    private string? _car, _message;
+
+    protected override void OnInitialized() => _car = DefaultCar;
+
+    private void Submit() => Dialog.Close(DialogResult.Ok(new Result(_car, _message)));
+}

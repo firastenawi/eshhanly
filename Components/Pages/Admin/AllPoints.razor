@@ -1,0 +1,43 @@
+@page "/admin/points"
+@attribute [Authorize(Roles = nameof(UserRole.Admin))]
+@inject PointService Points
+
+<PageTitle>كل نقاط الشحن - اشحنلي</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">كل نقاط الشحن</MudText>
+
+<MudTable Items="_items" Dense="true" Hover="true" Outlined="true" Breakpoint="Breakpoint.Sm" Filter="Filter">
+    <ToolBarContent>
+        <MudTextField T="string" @bind-Value="_search" Placeholder="بحث" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                      Immediate="true" Clearable="true" Class="mt-0" />
+    </ToolBarContent>
+    <HeaderContent>
+        <MudTh>النقطة</MudTh>
+        <MudTh>المالك</MudTh>
+        <MudTh>المحافظة</MudTh>
+        <MudTh>الحالة</MudTh>
+        <MudTh>اشتراك المالك</MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        <MudTd DataLabel="النقطة"><MudLink Href="@($"/points/{context.Id}")">@context.Name</MudLink></MudTd>
+        <MudTd DataLabel="المالك">@context.Owner.FullName (<span dir="ltr">@context.Owner.Phone</span>)</MudTd>
+        <MudTd DataLabel="المحافظة">@context.Governorate - @context.City</MudTd>
+        <MudTd DataLabel="الحالة"><PointStatusChip Status="context.Status" /></MudTd>
+        <MudTd DataLabel="اشتراك المالك">
+            @{ var s = Syria.SubscriptionState(context.Owner, DateTime.UtcNow); }
+            <MudChip T="string" Size="Size.Small" Color="s.Color" Variant="Variant.Outlined">@s.Text</MudChip>
+        </MudTd>
+    </RowTemplate>
+    <PagerContent><MudTablePager RowsPerPageString="عدد الصفوف:" /></PagerContent>
+</MudTable>
+
+@code {
+    private List<ChargePoint> _items = [];
+    private string? _search;
+
+    protected override async Task OnInitializedAsync() => _items = await Points.AllAsync();
+
+    private bool Filter(ChargePoint p) => string.IsNullOrWhiteSpace(_search)
+        || p.Name.Contains(_search) || p.City.Contains(_search) || p.Governorate.Contains(_search)
+        || p.Owner.FullName.Contains(_search) || p.Owner.Phone.Contains(_search);
+}

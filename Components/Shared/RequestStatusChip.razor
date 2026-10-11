@@ -1,0 +1,5 @@
+<MudChip T="string" Size="Size.Small" Color="Status.Color()" Variant="Variant.Outlined">@Status.Label()</MudChip>
+
+@code {
+    [Parameter] public RequestStatus Status { get; set; }
+}

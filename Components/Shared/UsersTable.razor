@@ -1,0 +1,138 @@
+@inject SubscriptionService Subscriptions
+@inject AuthService Auth
+@inject UserSession Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+@if (!PendingOnly)
+{
+    <MudGrid Spacing="2" Class="mb-3">
+        <MudItem xs="12" sm="6">
+            <MudTextField T="string" @bind-Value="_search" @bind-Value:after="LoadAsync" Label="بحث بالاسم أو الرقم" DebounceInterval="400"
+                          Clearable="true" Margin="Margin.Dense" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudSelect T="UserRole?" @bind-Value="_role" @bind-Value:after="LoadAsync" Label="نوع الحساب" Clearable="true" Dense="true">
+                <MudSelectItem T="UserRole?" Value="UserRole.Driver">أصحاب السيارات</MudSelectItem>
+                <MudSelectItem T="UserRole?" Value="UserRole.Host">أصحاب نقاط الشحن</MudSelectItem>
+            </MudSelect>
+        </MudItem>
+    </MudGrid>
+}
+
+<MudTable Items="_rows" Dense="true" Hover="true" Outlined="true" Breakpoint="Breakpoint.Sm" Loading="_loading">
+    <HeaderContent>
+        <MudTh>الاسم</MudTh>
+        <MudTh>الموبايل</MudTh>
+        <MudTh>النوع</MudTh>
+        <MudTh>المحافظة</MudTh>
+        <MudTh>الحالة</MudTh>
+        <MudTh>فعّال حتى</MudTh>
+        <MudTh></MudTh>
+    </HeaderContent>
+    <RowTemplate>
+        @{ var u = context.User; var state = Syria.SubscriptionState(u, DateTime.UtcNow); }
+        <MudTd DataLabel="الاسم">@u.FullName</MudTd>
+        <MudTd DataLabel="الموبايل"><MudLink Href="@($"tel:{u.Phone}")"><span dir="ltr">@u.Phone</span></MudLink></MudTd>
+        <MudTd DataLabel="النوع">
+            @u.Role.Label() @(u.HostKind is { } k ? $"({k.Label()})" : "")
+            @if (u.Role == UserRole.Host) { <MudText Typo="Typo.caption"> — @context.PointsCount نقطة</MudText> }
+        </MudTd>
+        <MudTd DataLabel="المحافظة">@u.Governorate</MudTd>
+        <MudTd DataLabel="الحالة"><MudChip T="string" Size="Size.Small" Color="state.Color">@state.Text</MudChip></MudTd>
+        <MudTd DataLabel="فعّال حتى">@(u.ActiveUntil is { } d ? Syria.FormatDate(d) : "-")</MudTd>
+        <MudTd>
+            <div class="d-flex gap-1 flex-wrap">
+                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Success" OnClick="() => ActivateAsync(u)" Disabled="u.IsBlocked">
+                    @(u.ActiveUntil > DateTime.UtcNow ? "تمديد" : "تفعيل")
+                </MudButton>
+                @if (u.SubscriptionRequestedAt is not null && !(u.ActiveUntil > DateTime.UtcNow))
+                {
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Error" OnClick="() => RejectAsync(u)">رفض</MudButton>
+                }
+                <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
+                    @if (u.ActiveUntil > DateTime.UtcNow)
+                    {
+                        <MudMenuItem OnClick="() => DeactivateAsync(u)">إلغاء التفعيل الآن</MudMenuItem>
+                    }
+                    <MudMenuItem OnClick="() => ResetPasswordAsync(u)">تعيين كلمة مرور جديدة</MudMenuItem>
+                    <MudMenuItem OnClick="() => BlockAsync(u)">@(u.IsBlocked ? "إلغاء الحظر" : "حظر الحساب")</MudMenuItem>
+                </MudMenu>
+            </div>
+        </MudTd>
+    </RowTemplate>
+    <NoRecordsContent>
+        <MudText Color="Color.Secondary">@(PendingOnly ? "لا يوجد طلبات اشتراك بانتظار التفعيل 👌" : "لا يوجد مستخدمون.")</MudText>
+    </NoRecordsContent>
+</MudTable>
+
+@code {
+    [Parameter] public bool PendingOnly { get; set; }
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private List<UserRow> _rows = [];
+    private string? _search;
+    private UserRole? _role;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    public async Task LoadAsync()
+    {
+        _loading = true;
+        _rows = await Subscriptions.ListUsersAsync(_search, _role, PendingOnly);
+        _loading = false;
+    }
+
+    private async Task AfterChangeAsync(string message)
+    {
+        Snackbar.Add(message, Severity.Success);
+        await LoadAsync();
+        await Changed.InvokeAsync();
+    }
+
+    private async Task ActivateAsync(User u)
+    {
+        var fee = (await Subscriptions.GetSettingsAsync()).MonthlyFee;
+        var dialog = await Dialogs.ShowAsync<ActivateDialog>(null, new DialogParameters<ActivateDialog>
+        {
+            { x => x.UserName, u.FullName },
+            { x => x.DefaultAmount, fee },
+        });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not ActivateDialog.Result r) return;
+        var adminId = await Session.GetUserIdAsync() ?? 0;
+        await Subscriptions.ActivateAsync(u.Id, r.Days, r.Amount, r.Note, adminId);
+        await AfterChangeAsync($"تم تفعيل {u.FullName} لمدة {r.Days} يوم");
+    }
+
+    private async Task RejectAsync(User u)
+    {
+        if (await Dialogs.ShowMessageBoxAsync("رفض الطلب", $"رفض طلب اشتراك {u.FullName}؟", yesText: "رفض", cancelText: "رجوع") != true) return;
+        await Subscriptions.RejectRequestAsync(u.Id);
+        await AfterChangeAsync("تم رفض الطلب");
+    }
+
+    private async Task DeactivateAsync(User u)
+    {
+        if (await Dialogs.ShowMessageBoxAsync("إلغاء التفعيل", $"إلغاء تفعيل {u.FullName} الآن؟", yesText: "نعم", cancelText: "رجوع") != true) return;
+        await Subscriptions.DeactivateAsync(u.Id);
+        await AfterChangeAsync("تم إلغاء التفعيل");
+    }
+
+    private async Task BlockAsync(User u)
+    {
+        await Subscriptions.SetBlockedAsync(u.Id, !u.IsBlocked);
+        await AfterChangeAsync(u.IsBlocked ? "تم إلغاء الحظر" : "تم حظر الحساب");
+    }
+
+    private async Task ResetPasswordAsync(User u)
+    {
+        var password = Random.Shared.Next(100000, 999999).ToString();
+        if (await Dialogs.ShowMessageBoxAsync("كلمة مرور جديدة",
+                $"سيتم تعيين كلمة المرور لـ {u.FullName} إلى: {password} — أرسلها له وأخبره بتغييرها من صفحة حسابي.",
+                yesText: "تعيين", cancelText: "رجوع") != true) return;
+        await Auth.ResetPasswordAsync(u.Id, password);
+        Snackbar.Add($"كلمة المرور الجديدة: {password}", Severity.Info, o => o.RequireInteraction = true);
+    }
+}

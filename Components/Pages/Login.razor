@@ -1,0 +1,57 @@
+@page "/login"
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<PageTitle>تسجيل الدخول - اشحنلي</PageTitle>
+
+<MudGrid Justify="Justify.Center">
+    <MudItem xs="12" sm="8" md="5">
+        <MudPaper Class="pa-6" Elevation="2">
+            <MudText Typo="Typo.h5" Class="mb-4">تسجيل الدخول</MudText>
+            @if (Error == "expired")
+            {
+                <MudAlert Severity="Severity.Warning" Class="mb-3" Dense="true">انتهت مهلة الدخول، حاول مرة أخرى.</MudAlert>
+            }
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-3" Dense="true">@_error</MudAlert>
+            }
+            <EditForm Model="this" OnValidSubmit="SubmitAsync">
+                <MudTextField T="string" @bind-Value="_phone" Label="رقم الموبايل" Placeholder="09xxxxxxxx" InputType="InputType.Telephone"
+                              Required="true" RequiredError="أدخل رقم الموبايل" Immediate="true" />
+                <MudTextField T="string" @bind-Value="_password" Label="كلمة المرور" InputType="InputType.Password"
+                              Required="true" RequiredError="أدخل كلمة المرور" Class="mt-3" Immediate="true" />
+                <MudCheckBox T="bool" @bind-Value="_remember" Label="تذكرني" Color="Color.Primary" Class="mt-2" />
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
+                           Class="mt-4" Disabled="_busy">دخول</MudButton>
+            </EditForm>
+            <MudText Class="mt-4" Align="Align.Center">
+                ما عندك حساب؟ <MudLink Href="/register">اشترك الآن</MudLink>
+            </MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
+    [SupplyParameterFromQuery] public string? Error { get; set; }
+
+    private string _phone = "", _password = "";
+    private bool _remember = true, _busy;
+    private string? _error;
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        _error = null;
+        var (user, error) = await Auth.ValidateAsync(_phone, _password);
+        if (user is null)
+        {
+            _error = error;
+            _busy = false;
+            return;
+        }
+        var ticket = Auth.CreateTicket(user.Id, _remember);
+        Nav.NavigateTo($"/account/signin?t={Uri.EscapeDataString(ticket)}&returnUrl={Uri.EscapeDataString(ReturnUrl ?? "/")}", forceLoad: true);
+    }
+}

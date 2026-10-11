@@ -1,0 +1,70 @@
+@page "/profile"
+@attribute [Authorize]
+@inject UserSession Session
+@inject AuthService Auth
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject ISnackbar Snackbar
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>حسابي - اشحنلي</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">حسابي</MudText>
+
+@if (_user is not null)
+{
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-6" Outlined="true">
+                <MudText Typo="Typo.h6" Class="mb-3">المعلومات</MudText>
+                <MudTextField @bind-Value="_user.FullName" Label="الاسم" MaxLength="100" />
+                <MudTextField Value="_user.Phone" Label="رقم الموبايل" ReadOnly="true" Class="mt-3" HelperText="لتغيير الرقم تواصل مع الإدارة" />
+                <MudSelect @bind-Value="_user.Governorate" Label="المحافظة" Class="mt-3">
+                    @foreach (var g in Syria.Governorates)
+                    {
+                        <MudSelectItem Value="g">@g</MudSelectItem>
+                    }
+                </MudSelect>
+                @if (_user.Role == UserRole.Driver)
+                {
+                    <MudTextField @bind-Value="_user.CarModel" Label="نوع السيارة" Class="mt-3" MaxLength="100" />
+                }
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-4" OnClick="SaveAsync">حفظ</MudButton>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-6" Outlined="true">
+                <MudText Typo="Typo.h6" Class="mb-3">تغيير كلمة المرور</MudText>
+                <MudTextField @bind-Value="_current" Label="كلمة المرور الحالية" InputType="InputType.Password" />
+                <MudTextField @bind-Value="_next" Label="كلمة المرور الجديدة (6 أحرف على الأقل)" InputType="InputType.Password" Class="mt-3" />
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="mt-4" OnClick="ChangePasswordAsync"
+                           Disabled="@(string.IsNullOrEmpty(_current) || _next.Length < 6)">تغيير</MudButton>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private User? _user;
+    private string _current = "", _next = "";
+
+    protected override async Task OnInitializedAsync() => _user = await Session.GetUserAsync();
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_user!.FullName)) { Snackbar.Add("الاسم مطلوب", Severity.Error); return; }
+        await using var db = await DbFactory.CreateDbContextAsync();
+        await db.Users.Where(u => u.Id == _user.Id).ExecuteUpdateAsync(s => s
+            .SetProperty(u => u.FullName, _user.FullName.Trim())
+            .SetProperty(u => u.Governorate, _user.Governorate)
+            .SetProperty(u => u.CarModel, _user.CarModel));
+        Snackbar.Add("تم الحفظ", Severity.Success);
+    }
+
+    private async Task ChangePasswordAsync()
+    {
+        var error = await Auth.ChangePasswordAsync(_user!.Id, _current, _next);
+        if (error is not null) { Snackbar.Add(error, Severity.Error); return; }
+        _current = _next = "";
+        Snackbar.Add("تم تغيير كلمة المرور", Severity.Success);
+    }
+}

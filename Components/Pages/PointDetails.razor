@@ -1,0 +1,133 @@
+@page "/points/{Id:int}"
+@attribute [Authorize(Policy = ActiveSubscriptionHandler.Policy)]
+@inject PointService Points
+@inject RequestService Requests
+@inject UserSession Session
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+
+<PageTitle>@(_point?.Name ?? "نقطة شحن") - اشحنلي</PageTitle>
+
+@if (_point is null)
+{
+    @if (!_loading)
+    {
+        <MudAlert Severity="Severity.Warning">نقطة الشحن غير موجودة.</MudAlert>
+    }
+}
+else
+{
+    <MudButton Href="/points" StartIcon="@Icons.Material.Filled.ArrowForward" Variant="Variant.Text" Class="mb-2">رجوع</MudButton>
+    <MudPaper Class="pa-6" Outlined="true">
+        <div class="d-flex align-center flex-wrap gap-2 mb-2">
+            <MudText Typo="Typo.h4">@_point.Name</MudText>
+            <PointStatusChip Status="_point.Status" />
+        </div>
+        <MudText Color="Color.Secondary" Class="mb-4">
+            @_point.Owner.FullName — @(_point.Owner.HostKind?.Label() ?? "")
+        </MudText>
+
+        <MudGrid>
+            <MudItem xs="12" md="6">
+                <MudSimpleTable Dense="true" Elevation="0">
+                    <tbody>
+                        <tr><td><b>المحافظة</b></td><td>@_point.Governorate</td></tr>
+                        <tr><td><b>المدينة / المنطقة</b></td><td>@_point.City</td></tr>
+                        <tr><td><b>العنوان</b></td><td>@_point.Address</td></tr>
+                        <tr><td><b>نوع الشاحن</b></td><td>@_point.Connectors.Replace(",", "، ")</td></tr>
+                        @if (_point.PowerKw is not null)
+                        {
+                            <tr><td><b>القدرة</b></td><td dir="ltr" style="text-align:right">@_point.PowerKw?.ToString("0.#") kW</td></tr>
+                        }
+                        @if (!string.IsNullOrEmpty(_point.PriceNote))
+                        {
+                            <tr><td><b>السعر</b></td><td>@_point.PriceNote</td></tr>
+                        }
+                        @if (!string.IsNullOrEmpty(_point.WorkingHours))
+                        {
+                            <tr><td><b>أوقات العمل</b></td><td>@_point.WorkingHours</td></tr>
+                        }
+                        <tr><td><b>آخر تحديث</b></td><td>@Syria.Format(_point.UpdatedAt)</td></tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudItem>
+            <MudItem xs="12" md="6">
+                @if (!string.IsNullOrEmpty(_point.Notes))
+                {
+                    <MudText Typo="Typo.subtitle2">ملاحظات</MudText>
+                    <MudText Style="white-space:pre-wrap" Class="mb-4">@_point.Notes</MudText>
+                }
+                @if (!string.IsNullOrEmpty(_point.MapUrl))
+                {
+                    <MudButton Href="@_point.MapUrl" Target="_blank" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Map" Class="mb-4">
+                        فتح الموقع على الخريطة
+                    </MudButton>
+                }
+            </MudItem>
+        </MudGrid>
+
+        <MudDivider Class="my-4" />
+
+        @if (_user?.Role == UserRole.Driver)
+        {
+            @if (_point.Status.AcceptsRequests())
+            {
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Filled.Send" OnClick="RequestAsync">
+                    إرسال طلب شحن
+                </MudButton>
+                @if (_point.Status == PointStatus.InUse)
+                {
+                    <MudText Typo="Typo.caption" Class="d-block mt-2">النقطة قيد الاستخدام حالياً، بإمكانك ترسل طلب وصاحبها بيرد عليك.</MudText>
+                }
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info">هذه النقطة @_point.Status.Label() حالياً ولا تستقبل طلبات.</MudAlert>
+            }
+        }
+        else if (_point.OwnerId == _user?.Id)
+        {
+            <MudButton Href="@($"/my-points/{_point.Id}")" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit">تعديل النقطة</MudButton>
+        }
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private ChargePoint? _point;
+    private User? _user;
+    private bool _loading = true;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _user = await Session.GetUserAsync();
+        _point = await Points.GetAsync(Id);
+        // Points of inactive hosts are hidden from everyone except their owner and admins.
+        if (_point is not null && _user?.Role != UserRole.Admin && _point.OwnerId != _user?.Id && !_point.Owner.IsActive(DateTime.UtcNow))
+            _point = null;
+        _loading = false;
+    }
+
+    private async Task RequestAsync()
+    {
+        var parameters = new DialogParameters<NewRequestDialog>
+        {
+            { x => x.PointName, _point!.Name },
+            { x => x.DefaultCar, _user!.CarModel },
+        };
+        var dialog = await Dialogs.ShowAsync<NewRequestDialog>(null, parameters);
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not NewRequestDialog.Result data) return;
+
+        var (id, error) = await Requests.CreateAsync(_user!.Id, _point.Id, data.Message, data.Car);
+        if (error is not null)
+        {
+            Snackbar.Add(error, Severity.Error);
+            return;
+        }
+        Snackbar.Add("تم إرسال طلبك، رح يوصلك إشعار بالرد", Severity.Success);
+        Nav.NavigateTo($"/requests/{id}");
+    }
+}

@@ -1,0 +1,8 @@
+bin/
+obj/
+.vs/
+.vscode/
+.claude/
+*.db
+*.db-shm
+*.db-wal

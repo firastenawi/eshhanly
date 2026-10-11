@@ -1,0 +1,198 @@
+@page "/requests/{Id:int}"
+@attribute [Authorize]
+@implements IDisposable
+@inject RequestService Requests
+@inject UserSession Session
+@inject LiveUpdates Live
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>طلب شحن #@Id - اشحنلي</PageTitle>
+
+@if (_req is null)
+{
+    @if (!_loading)
+    {
+        <MudAlert Severity="Severity.Warning">الطلب غير موجود.</MudAlert>
+    }
+}
+else
+{
+    var isHost = _req.HostId == _user!.Id;
+    var isDriver = _req.DriverId == _user.Id;
+    var canAct = _user.IsActive(DateTime.UtcNow);
+
+    <MudButton Href="/requests" StartIcon="@Icons.Material.Filled.ArrowForward" Variant="Variant.Text" Class="mb-2">كل الطلبات</MudButton>
+    <MudGrid>
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-5" Outlined="true">
+                <div class="d-flex align-center gap-2 mb-3">
+                    <MudText Typo="Typo.h6">طلب شحن #@_req.Id</MudText>
+                    <RequestStatusChip Status="_req.Status" />
+                </div>
+                <MudSimpleTable Dense="true" Elevation="0">
+                    <tbody>
+                        <tr><td><b>النقطة</b></td><td><MudLink Href="@($"/points/{_req.ChargePointId}")">@_req.ChargePoint.Name</MudLink></td></tr>
+                        <tr><td><b>العنوان</b></td><td>@_req.ChargePoint.Governorate - @_req.ChargePoint.City، @_req.ChargePoint.Address</td></tr>
+                        <tr><td><b>صاحب النقطة</b></td><td>@_req.Host.FullName</td></tr>
+                        <tr><td><b>صاحب السيارة</b></td><td>@_req.Driver.FullName</td></tr>
+                        @if (!string.IsNullOrEmpty(_req.CarInfo))
+                        {
+                            <tr><td><b>السيارة</b></td><td>@_req.CarInfo</td></tr>
+                        }
+                        <tr><td><b>تاريخ الطلب</b></td><td>@Syria.Format(_req.CreatedAt)</td></tr>
+                        @if (_req.Status == RequestStatus.Accepted)
+                        {
+                            var other = isHost ? _req.Driver : _req.Host;
+                            <tr>
+                                <td><b>رقم التواصل</b></td>
+                                <td><MudLink Href="@($"tel:{other.Phone}")"><span dir="ltr">@other.Phone</span></MudLink></td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+
+                @if (!string.IsNullOrEmpty(_req.Message))
+                {
+                    <MudText Typo="Typo.subtitle2" Class="mt-3">رسالة الطلب</MudText>
+                    <MudText Typo="Typo.body2" Style="white-space:pre-wrap">@_req.Message</MudText>
+                }
+                @if (!string.IsNullOrEmpty(_req.ResponseMessage))
+                {
+                    <MudAlert Severity="@(_req.Status == RequestStatus.Accepted ? Severity.Success : Severity.Error)" Class="mt-3" Dense="true">
+                        رد صاحب النقطة: @_req.ResponseMessage
+                    </MudAlert>
+                }
+
+                @if (canAct && isHost && _req.Status == RequestStatus.Pending)
+                {
+                    <div class="d-flex gap-2 mt-4">
+                        <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Check" OnClick="() => RespondAsync(true)">قبول</MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Close" OnClick="() => RespondAsync(false)">رفض</MudButton>
+                    </div>
+                }
+                @if (isDriver && _req.Status is RequestStatus.Pending or RequestStatus.Accepted)
+                {
+                    <MudButton Variant="Variant.Text" Color="Color.Error" Class="mt-4" OnClick="CancelAsync">إلغاء الطلب</MudButton>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="7">
+            <MudPaper Class="pa-3" Outlined="true">
+                <MudText Typo="Typo.h6" Class="mb-2 px-2">المحادثة</MudText>
+                <div class="chat-box pa-3 d-flex flex-column gap-2" @ref="_chatBox">
+                    @if (_req.Messages.Count == 0)
+                    {
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="my-auto">
+                            لا يوجد رسائل بعد. اتفقوا هنا على الوقت والسعر.
+                        </MudText>
+                    }
+                    @foreach (var m in _req.Messages)
+                    {
+                        var mine = m.SenderId == _user.Id;
+                        <div class="bubble @(mine ? "mine" : "theirs")">
+                            <div>@m.Body</div>
+                            <div style="font-size:11px;opacity:.7;margin-top:2px">@Syria.Format(m.SentAt)</div>
+                        </div>
+                    }
+                </div>
+                @if (_req.IsChatOpen && (isHost || isDriver) && canAct)
+                {
+                    <div class="d-flex gap-2 mt-3 align-center">
+                        <MudTextField T="string" @bind-Value="_text" Placeholder="اكتب رسالة..." Variant="Variant.Outlined" Margin="Margin.Dense"
+                                      Immediate="true" OnKeyDown="OnKeyDown" MaxLength="1000" Class="flex-grow-1" AutoFocus="true" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Send" Color="Color.Primary" Variant="Variant.Filled" OnClick="SendAsync"
+                                       Disabled="string.IsNullOrWhiteSpace(_text)" />
+                    </div>
+                }
+                else
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-2 px-2">المحادثة مغلقة.</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private ChargeRequest? _req;
+    private User? _user;
+    private bool _loading = true, _scroll;
+    private string? _text;
+    private ElementReference _chatBox;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _user = await Session.GetUserAsync();
+        await LoadAsync();
+        _loading = false;
+    }
+
+    protected override void OnInitialized() => Live.UserChanged += OnChanged;
+
+    private async Task LoadAsync()
+    {
+        if (_user is null) return;
+        var before = _req?.Messages.Count;
+        _req = await Requests.GetAsync(Id, _user.Id, _user.Role == UserRole.Admin);
+        if (_req is null) return;
+        if (_req.Messages.Any(m => !m.IsRead && m.SenderId != _user.Id))
+            await Requests.MarkReadAsync(_req.Id, _user.Id);
+        _scroll = before != _req.Messages.Count;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_scroll && _req is not null)
+        {
+            _scroll = false;
+            await JS.InvokeVoidAsync("eshhanly.scrollToEnd", _chatBox);
+        }
+    }
+
+    private async Task OnChanged(int userId)
+    {
+        if (userId != _user?.Id) return;
+        await InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey) await SendAsync();
+    }
+
+    private async Task SendAsync()
+    {
+        var text = _text;
+        if (string.IsNullOrWhiteSpace(text)) return;
+        _text = "";
+        var error = await Requests.SendMessageAsync(Id, _user!.Id, text);
+        if (error is not null) Snackbar.Add(error, Severity.Error);
+        await LoadAsync();
+    }
+
+    private async Task RespondAsync(bool accept)
+    {
+        var dialog = await Dialogs.ShowAsync<RespondDialog>(null, new DialogParameters<RespondDialog> { { x => x.Accept, accept } });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+        var error = await Requests.RespondAsync(Id, _user!.Id, accept, result.Data as string);
+        Snackbar.Add(error ?? (accept ? "تم قبول الطلب" : "تم رفض الطلب"), error is null ? Severity.Success : Severity.Error);
+        await LoadAsync();
+    }
+
+    private async Task CancelAsync()
+    {
+        var ok = await Dialogs.ShowMessageBoxAsync("إلغاء الطلب", "متأكد من إلغاء طلب الشحن؟", yesText: "نعم، إلغاء", cancelText: "رجوع");
+        if (ok != true) return;
+        var error = await Requests.CancelAsync(Id, _user!.Id);
+        if (error is not null) Snackbar.Add(error, Severity.Error);
+        await LoadAsync();
+    }
+
+    public void Dispose() => Live.UserChanged -= OnChanged;
+}

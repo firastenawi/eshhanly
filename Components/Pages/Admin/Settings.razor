@@ -1,0 +1,27 @@
+@page "/admin/settings"
+@attribute [Authorize(Roles = nameof(UserRole.Admin))]
+@inject SubscriptionService Subscriptions
+@inject ISnackbar Snackbar
+
+<PageTitle>الإعدادات - اشحنلي</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">الإعدادات</MudText>
+
+<MudPaper Class="pa-6" Outlined="true" Style="max-width:700px">
+    <MudNumericField T="long" @bind-Value="_s.MonthlyFee" Label="قيمة الاشتراك الشهري (ل.س)" Min="0" HideSpinButtons="true" />
+    <MudTextField T="string" @bind-Value="_s.PaymentInstructions" Label="تعليمات الدفع (تظهر للمستخدمين)" Lines="4" MaxLength="1000" Class="mt-4" />
+    <MudTextField T="string" @bind-Value="_s.ContactPhone" Label="رقم تواصل الإدارة" Placeholder="09xxxxxxxx" MaxLength="20" Class="mt-4" />
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-6" OnClick="SaveAsync">حفظ</MudButton>
+</MudPaper>
+
+@code {
+    private AppSettings _s = new();
+
+    protected override async Task OnInitializedAsync() => _s = await Subscriptions.GetSettingsAsync();
+
+    private async Task SaveAsync()
+    {
+        await Subscriptions.SaveSettingsAsync(_s);
+        Snackbar.Add("تم الحفظ", Severity.Success);
+    }
+}

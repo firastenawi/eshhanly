@@ -1,0 +1,21 @@
+<MudDialog>
+    <TitleContent>@(Accept ? "قبول الطلب" : "رفض الطلب")</TitleContent>
+    <DialogContent>
+        <MudTextField T="string" @bind-Value="_message" Lines="3" Label="رسالة لصاحب السيارة"
+                      Placeholder="@(Accept ? "مثال: أهلاً، النقطة جاهزة، تفضل الساعة 5" : "مثال: عذراً، النقطة محجوزة اليوم")"
+                      MaxLength="500" Counter="500" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => Dialog.Cancel()">إلغاء</MudButton>
+        <MudButton Color="@(Accept ? Color.Success : Color.Error)" Variant="Variant.Filled"
+                   OnClick="() => Dialog.Close(DialogResult.Ok(_message))">
+            @(Accept ? "قبول" : "رفض")
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+    [Parameter] public bool Accept { get; set; }
+    private string? _message;
+}

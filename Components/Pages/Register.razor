@@ -1,0 +1,109 @@
+@page "/register"
+@inject AuthService Auth
+@inject SubscriptionService Subscriptions
+@inject NavigationManager Nav
+
+<PageTitle>اشتراك جديد - اشحنلي</PageTitle>
+
+<MudGrid Justify="Justify.Center">
+    <MudItem xs="12" sm="10" md="7">
+        <MudPaper Class="pa-6" Elevation="2">
+            <MudText Typo="Typo.h5">طلب اشتراك جديد</MudText>
+            <MudText Typo="Typo.body2" Class="mb-4" Color="Color.Secondary">
+                الاشتراك الشهري: <b>@Syria.Money(_fee)</b> — يُدفع نقداً، وبعدها تقوم الإدارة بتفعيل حسابك.
+            </MudText>
+            @if (_error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mb-3" Dense="true">@_error</MudAlert>
+            }
+
+            <MudForm @ref="_form" Model="_m">
+                <MudText Typo="Typo.subtitle2" Class="mb-1">نوع الحساب</MudText>
+                <MudRadioGroup T="UserRole" @bind-Value="_m.Role">
+                    <MudRadio Value="UserRole.Driver" Color="Color.Primary">🚗 صاحب سيارة كهربائية</MudRadio>
+                    <MudRadio Value="UserRole.Host" Color="Color.Primary">⚡ صاحب نقطة شحن</MudRadio>
+                </MudRadioGroup>
+
+                @if (_m.Role == UserRole.Host)
+                {
+                    <MudRadioGroup T="HostKind" @bind-Value="_m.HostKind" Class="mt-1">
+                        <MudRadio Value="HostKind.Individual" Size="Size.Small">فرد (شاحن منزلي)</MudRadio>
+                        <MudRadio Value="HostKind.Station" Size="Size.Small">محطة شحن</MudRadio>
+                    </MudRadioGroup>
+                }
+
+                <MudGrid Class="mt-1">
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_m.FullName" Label="@(_m.Role == UserRole.Host && _m.HostKind == HostKind.Station ? "اسم المحطة / المسؤول" : "الاسم الكامل")"
+                                      Required="true" RequiredError="الاسم مطلوب" MaxLength="100" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_m.Phone" Label="رقم الموبايل" Placeholder="09xxxxxxxx" InputType="InputType.Telephone"
+                                      Required="true" RequiredError="رقم الموبايل مطلوب" Validation="@(new Func<string, string?>(ValidatePhone))" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudSelect @bind-Value="_m.Governorate" Label="المحافظة" Required="true">
+                            @foreach (var g in Syria.Governorates)
+                            {
+                                <MudSelectItem Value="g">@g</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </MudItem>
+                    @if (_m.Role == UserRole.Driver)
+                    {
+                        <MudItem xs="12" sm="6">
+                            <MudTextField @bind-Value="_m.CarModel" Label="نوع السيارة (اختياري)" Placeholder="مثال: BYD Atto 3" MaxLength="100" />
+                        </MudItem>
+                    }
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_m.Password" Label="كلمة المرور" InputType="InputType.Password" Required="true"
+                                      RequiredError="كلمة المرور مطلوبة" Validation="@(new Func<string, string?>(ValidatePassword))" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="_confirm" Label="تأكيد كلمة المرور" InputType="InputType.Password" Required="true"
+                                      RequiredError="أكد كلمة المرور" Validation="@(new Func<string, string?>(ValidateConfirm))" />
+                    </MudItem>
+                </MudGrid>
+
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Class="mt-6" Disabled="_busy" OnClick="SubmitAsync">
+                    إرسال طلب الاشتراك
+                </MudButton>
+            </MudForm>
+            <MudText Class="mt-4" Align="Align.Center">
+                عندك حساب؟ <MudLink Href="/login">سجّل الدخول</MudLink>
+            </MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private MudForm _form = null!;
+    private readonly RegisterModel _m = new();
+    private string _confirm = "";
+    private long _fee;
+    private bool _busy;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync() => _fee = (await Subscriptions.GetSettingsAsync()).MonthlyFee;
+
+    private static string? ValidatePhone(string p) => PhoneNumber.Normalize(p) is null ? "رقم غير صحيح (مثال: 0912345678)" : null;
+    private static string? ValidatePassword(string p) => p is { Length: < 6 } ? "6 أحرف على الأقل" : null;
+    private string? ValidateConfirm(string p) => p != _m.Password ? "كلمتا المرور غير متطابقتين" : null;
+
+    private async Task SubmitAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid) return;
+
+        _busy = true;
+        var (user, error) = await Auth.RegisterAsync(_m);
+        if (user is null)
+        {
+            _error = error;
+            _busy = false;
+            return;
+        }
+        var ticket = Auth.CreateTicket(user.Id, remember: true);
+        Nav.NavigateTo($"/account/signin?t={Uri.EscapeDataString(ticket)}&returnUrl=%2Fsubscription", forceLoad: true);
+    }
+}

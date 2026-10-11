@@ -1,0 +1,83 @@
+@page "/requests"
+@attribute [Authorize]
+@implements IDisposable
+@inject RequestService Requests
+@inject UserSession Session
+@inject LiveUpdates Live
+
+<PageTitle>الطلبات - اشحنلي</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">@(_role == UserRole.Host ? "طلبات الشحن الواردة" : "طلباتي")</MudText>
+
+<MudChipSet T="RequestStatus?" @bind-SelectedValue="_status" @bind-SelectedValue:after="LoadAsync" SelectionMode="SelectionMode.SingleSelection"
+            CheckMark="true" Class="mb-4">
+    <MudChip T="RequestStatus?" Value="null" Default="true">الكل</MudChip>
+    @foreach (var s in Enum.GetValues<RequestStatus>())
+    {
+        <MudChip T="RequestStatus?" Value="s" Color="s.Color()">@s.Label()</MudChip>
+    }
+</MudChipSet>
+
+@if (_rows.Count == 0)
+{
+    <MudText Color="Color.Secondary">لا يوجد طلبات.</MudText>
+}
+else
+{
+    <MudPaper Outlined="true">
+        <MudList T="string">
+            @foreach (var row in _rows)
+            {
+                var r = row.Request;
+                var other = r.DriverId == _userId ? r.Host : r.Driver;
+                <MudListItem T="string" Href="@($"/requests/{r.Id}")">
+                    <div class="d-flex align-center gap-3 flex-wrap">
+                        <RequestStatusChip Status="r.Status" />
+                        <div>
+                            <MudText Typo="Typo.subtitle1"><b>@r.ChargePoint.Name</b> — @other.FullName</MudText>
+                            @if (!string.IsNullOrEmpty(r.Message))
+                            {
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">@r.Message</MudText>
+                            }
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@Syria.Format(r.CreatedAt)</MudText>
+                        </div>
+                        <MudSpacer />
+                        @if (row.Unread > 0)
+                        {
+                            <MudBadge Content="row.Unread" Color="Color.Error" Overlap="true">
+                                <MudIcon Icon="@Icons.Material.Filled.Chat" />
+                            </MudBadge>
+                        }
+                    </div>
+                </MudListItem>
+                <MudDivider />
+            }
+        </MudList>
+    </MudPaper>
+}
+
+@code {
+    private int _userId;
+    private UserRole _role;
+    private RequestStatus? _status;
+    private List<RequestRow> _rows = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = await Session.GetUserAsync();
+        _userId = user?.Id ?? 0;
+        _role = user?.Role ?? UserRole.Driver;
+        await LoadAsync();
+        Live.UserChanged += OnChanged;
+    }
+
+    private async Task LoadAsync() => _rows = await Requests.ListAsync(_userId, _status);
+
+    private async Task OnChanged(int id)
+    {
+        if (id != _userId) return;
+        await InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    }
+
+    public void Dispose() => Live.UserChanged -= OnChanged;
+}

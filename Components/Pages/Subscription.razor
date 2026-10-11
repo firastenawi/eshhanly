@@ -1,0 +1,98 @@
+@page "/subscription"
+@attribute [Authorize]
+@inject UserSession Session
+@inject SubscriptionService Subscriptions
+@inject ISnackbar Snackbar
+
+<PageTitle>اشتراكي - اشحنلي</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">اشتراكي</MudText>
+
+@if (_user is not null)
+{
+    var now = DateTime.UtcNow;
+    var state = Syria.SubscriptionState(_user, now);
+    <MudGrid>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-6" Outlined="true">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">الحالة</MudText>
+                <MudChip T="string" Color="state.Color" Variant="Variant.Filled" Class="ms-0">@state.Text</MudChip>
+                @if (_user.ActiveUntil is not null)
+                {
+                    <MudText Class="mt-3">
+                        @(_user.ActiveUntil > now ? "ينتهي في" : "انتهى في"): <b>@Syria.Format(_user.ActiveUntil.Value)</b>
+                    </MudText>
+                }
+
+                @if (_user.IsBlocked)
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-4">حسابك محظور. تواصل مع الإدارة.</MudAlert>
+                }
+                else if (_user.SubscriptionRequestedAt is not null)
+                {
+                    <MudAlert Severity="Severity.Info" Class="mt-4">
+                        طلبك وصل للإدارة بتاريخ @Syria.Format(_user.SubscriptionRequestedAt.Value). بعد الدفع رح يتفعّل حسابك ويوصلك إشعار.
+                    </MudAlert>
+                }
+                else if (_user.Role != UserRole.Admin)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Class="mt-4" OnClick="RequestAsync"
+                               StartIcon="@Icons.Material.Filled.Autorenew">
+                        @(_user.ActiveUntil > now ? "طلب تمديد الاشتراك" : "طلب تفعيل / تجديد الاشتراك")
+                    </MudButton>
+                }
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" md="6">
+            <MudPaper Class="pa-6" Outlined="true">
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary">طريقة الدفع</MudText>
+                <MudText Typo="Typo.h6" Class="my-2">@Syria.Money(_settings.MonthlyFee) / شهرياً</MudText>
+                <MudText>@_settings.PaymentInstructions</MudText>
+                @if (!string.IsNullOrEmpty(_settings.ContactPhone))
+                {
+                    <MudText Class="mt-2">رقم الإدارة: <MudLink Href="@($"tel:{_settings.ContactPhone}")"><span dir="ltr">@_settings.ContactPhone</span></MudLink></MudText>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @if (_history.Count > 0)
+    {
+        <MudText Typo="Typo.h6" Class="mt-6 mb-2">سجل الاشتراكات</MudText>
+        <MudSimpleTable Dense="true" Outlined="true">
+            <thead><tr><th>من</th><th>إلى</th><th>المبلغ</th></tr></thead>
+            <tbody>
+                @foreach (var p in _history)
+                {
+                    <tr>
+                        <td>@Syria.FormatDate(p.StartsAt)</td>
+                        <td>@Syria.FormatDate(p.EndsAt)</td>
+                        <td>@(p.AmountPaid is { } a ? Syria.Money(a) : "-")</td>
+                    </tr>
+                }
+            </tbody>
+        </MudSimpleTable>
+    }
+}
+
+@code {
+    private User? _user;
+    private AppSettings _settings = new();
+    private List<SubscriptionPeriod> _history = [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _user = await Session.GetUserAsync();
+        _settings = await Subscriptions.GetSettingsAsync();
+        if (_user is not null) _history = await Subscriptions.HistoryAsync(_user.Id);
+    }
+
+    private async Task RequestAsync()
+    {
+        await Subscriptions.RequestActivationAsync(_user!.Id);
+        Snackbar.Add("تم إرسال الطلب للإدارة", Severity.Success);
+        await LoadAsync();
+    }
+}

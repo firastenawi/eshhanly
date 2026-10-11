@@ -1,0 +1,122 @@
+@page "/my-points/new"
+@page "/my-points/{Id:int}"
+@attribute [Authorize(Policy = ActiveSubscriptionHandler.Policy, Roles = nameof(UserRole.Host))]
+@inject PointService Points
+@inject UserSession Session
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>@(Id is null ? "إضافة نقطة" : "تعديل نقطة") - اشحنلي</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">@(Id is null ? "إضافة نقطة شحن" : "تعديل نقطة الشحن")</MudText>
+
+@if (_notFound)
+{
+    <MudAlert Severity="Severity.Warning">النقطة غير موجودة.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-6" Outlined="true">
+        <MudForm @ref="_form">
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_p.Name" Label="اسم النقطة" Placeholder="مثال: شاحن بيت أبو أحمد / محطة المزة" Required="true"
+                                  RequiredError="الاسم مطلوب" MaxLength="100" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_p.Status" Label="الحالة">
+                        @foreach (var s in Enum.GetValues<PointStatus>())
+                        {
+                            <MudSelectItem Value="s">@s.Label()</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect @bind-Value="_p.Governorate" Label="المحافظة" Required="true">
+                        @foreach (var g in Syria.Governorates)
+                        {
+                            <MudSelectItem Value="g">@g</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_p.City" Label="المدينة / المنطقة" Required="true" RequiredError="المنطقة مطلوبة" MaxLength="100" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_p.Address" Label="العنوان التفصيلي" Required="true" RequiredError="العنوان مطلوب" MaxLength="300" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_p.MapUrl" Label="رابط الموقع على الخريطة (اختياري)" Placeholder="https://maps.google.com/..."
+                                  MaxLength="500" HelperText="افتح Google Maps ← اضغط على موقعك ← مشاركة ← نسخ الرابط"
+                                  Validation="@(new Func<string?, string?>(ValidateUrl))" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="string" @bind-SelectedValues="_connectors" MultiSelection="true" Label="أنواع الشاحن" Required="true"
+                               RequiredError="اختر نوعاً واحداً على الأقل">
+                        @foreach (var c in Syria.ConnectorTypes)
+                        {
+                            <MudSelectItem Value="c">@c</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudNumericField T="decimal?" @bind-Value="_p.PowerKw" Label="القدرة kW (اختياري)" Min="0" Max="1000" HideSpinButtons="true" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_p.PriceNote" Label="السعر (اختياري)" Placeholder="مثال: 5000 ل.س للساعة / حسب الاتفاق" MaxLength="200" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="_p.WorkingHours" Label="أوقات العمل (اختياري)" Placeholder="مثال: يومياً 8 ص - 11 م" MaxLength="100" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="_p.Notes" Label="ملاحظات (اختياري)" Lines="3" MaxLength="1000"
+                                  Placeholder="مثال: يوجد موقف مظلل، يرجى الاتصال قبل الوصول" />
+                </MudItem>
+            </MudGrid>
+            <div class="d-flex gap-2 mt-6">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SaveAsync" Disabled="_busy">حفظ</MudButton>
+                <MudButton Href="/my-points" Variant="Variant.Text">إلغاء</MudButton>
+            </div>
+        </MudForm>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private MudForm _form = null!;
+    private ChargePoint _p = new();
+    private IReadOnlyCollection<string> _connectors = [];
+    private int _userId;
+    private bool _busy, _notFound;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var user = await Session.GetUserAsync();
+        _userId = user!.Id;
+        if (Id is null)
+        {
+            _p = new ChargePoint { Governorate = user.Governorate };
+            return;
+        }
+        var p = await Points.GetAsync(Id.Value);
+        if (p is null || p.OwnerId != _userId) { _notFound = true; return; }
+        _p = p;
+        _connectors = p.Connectors.Split(",", StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    private static string? ValidateUrl(string? url) =>
+        string.IsNullOrWhiteSpace(url) || (Uri.TryCreate(url.Trim(), UriKind.Absolute, out var u) && u.Scheme is "http" or "https")
+            ? null : "رابط غير صحيح";
+
+    private async Task SaveAsync()
+    {
+        await _form.ValidateAsync();
+        if (!_form.IsValid) return;
+        _busy = true;
+        _p.Connectors = string.Join(',', _connectors);
+        await Points.SaveAsync(_p, _userId);
+        Snackbar.Add("تم الحفظ", Severity.Success);
+        Nav.NavigateTo("/my-points");
+    }
+}

@@ -1,0 +1,38 @@
+<MudDialog>
+    <TitleContent>تفعيل اشتراك: @UserName</TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-3">
+            سيتم إلغاء التفعيل تلقائياً بعد انتهاء المدة. إذا كان الاشتراك فعّالاً حالياً تُضاف المدة إلى نهايته.
+        </MudText>
+        <MudSelect T="int" @bind-Value="_days" Label="المدة">
+            <MudSelectItem Value="30">شهر (30 يوم)</MudSelectItem>
+            <MudSelectItem Value="60">شهرين</MudSelectItem>
+            <MudSelectItem Value="90">3 أشهر</MudSelectItem>
+            <MudSelectItem Value="180">6 أشهر</MudSelectItem>
+            <MudSelectItem Value="365">سنة</MudSelectItem>
+            <MudSelectItem Value="7">أسبوع (تجريبي)</MudSelectItem>
+        </MudSelect>
+        <MudNumericField T="long?" @bind-Value="_amount" Label="المبلغ المقبوض (ل.س)" HideSpinButtons="true" Class="mt-3" />
+        <MudTextField T="string" @bind-Value="_note" Label="ملاحظة (اختياري)" Class="mt-3" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => Dialog.Cancel()">إلغاء</MudButton>
+        <MudButton Color="Color.Success" Variant="Variant.Filled" OnClick="Submit">تفعيل</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    public record Result(int Days, long? Amount, string? Note);
+
+    [CascadingParameter] private IMudDialogInstance Dialog { get; set; } = null!;
+    [Parameter] public string UserName { get; set; } = "";
+    [Parameter] public long DefaultAmount { get; set; }
+
+    private int _days = 30;
+    private long? _amount;
+    private string? _note;
+
+    protected override void OnInitialized() => _amount = DefaultAmount;
+
+    private void Submit() => Dialog.Close(DialogResult.Ok(new Result(_days, _amount, _note)));
+}
